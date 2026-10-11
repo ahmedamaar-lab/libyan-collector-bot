@@ -1,0 +1,31 @@
+{
+  "marketplaces": ["EBAY_US", "EBAY_IT", "EBAY_DE", "EBAY_FR", "EBAY_GB", "EBAY_ES"],
+  "queries": [
+    "(Libya,Libia,Libye,Lybia,Libyen,Libyan) -stamps -stamp -francobolli -briefmarken -timbres -tektite -glass",
+    "(Tripolitania,Tripolitaine,Tripolitanien) -stamps -stamp -francobolli -briefmarken -timbres",
+    "(Cyrenaica,Cirenaica,Cyrenaique,Kyrenaika) -stamps -stamp -francobolli -briefmarken -timbres",
+    "(Tripoli,Tripolis) -Lebanon -Liban -Libano -stamps -stamp -francobolli -briefmarken -timbres",
+    "(burnus,burnous,bournous,burnouse)",
+    "(farmila,farmla,fermila)",
+    "(ليبيا,طرابلس,برقة)"
+  ],
+  "geography_terms": ["Libya", "Libia", "Libye", "Lybia", "Libyen", "Libyan", "Libico", "Libica", "Tripoli", "Tripolis", "Tripolitania", "Tripolitaine", "Tripolitanien", "Cyrenaica", "Cirenaica", "Cyrenaique", "Kyrenaika", "Benghazi", "Bengasi", "ليبيا", "طرابلس", "برقة"],
+  "exclude_terms": ["stamp", "stamps", "postage", "philatelic", "francobollo", "francobolli", "briefmarke", "briefmarken", "timbre", "timbres", "sellos", "طوابع", "desert glass", "libyan glass", "tektite", "tektites", "silica glass", "verre libyque", "vetro libico", "wüstenglas", "Lebanon", "Liban", "Libano", "لبنان"],
+  "interest_terms": {
+    "clothing": ["burnus", "burnous", "bournous", "burnouse", "farmila", "farmla", "fermila", "vest", "waistcoat", "gilet", "robe", "cloak", "costume", "embroidered", "ricamato", "brodé", "abbigliamento", "textile", "weste", "mantel", "برنوس", "فرملة"],
+    "watches": ["watch", "wristwatch", "pocket watch", "montre", "orologio", "orologi", "uhr", "armbanduhr", "ساعة"],
+    "vinyl": ["vinyl", "vinile", "vinyle", "record", "records", "LP", "45 rpm", "78 rpm", "disco", "schallplatte", "أسطوانة"],
+    "books": ["book", "books", "libro", "libri", "livre", "livres", "buch", "bücher", "volume", "atlas", "كتاب", "history", "storia", "histoire", "geschichte"],
+    "maps": ["map", "maps", "carte", "cartina", "mappa", "landkarte", "karte", "atlas", "خريطة"],
+    "vintage": ["vintage", "antique", "antico", "ancien", "antiquité", "ottoman", "ottomano", "kingdom", "regno", "royal", "militaria", "silver", "argento", "silber", "badge", "medal", "photograph", "postcard", "cartolina", "carte postale", "antiquitäten"]
+  },
+  "clothing_lead_terms": ["burnus", "burnous", "bournous", "burnouse", "farmila", "farmla", "fermila", "برنوس", "فرملة"],
+  "book_watchlist": [],
+  "page_size": 100,
+  "max_pages": 2,
+  "instant_threshold": 4,
+  "max_instant_per_run": 15,
+  "max_digest_per_run": 30,
+  "timezone": "America/Chicago",
+  "digest_hour": 8
+}

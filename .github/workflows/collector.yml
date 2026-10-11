@@ -1,0 +1,51 @@
+name: Libyan Collector Bot
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Choose chat-id first, then test. Scan needs eBay production access.
+        type: choice
+        required: true
+        default: test
+        options: [chat-id, test, scan, digest]
+  schedule:
+    - cron: '17 * * * *'
+permissions:
+  contents: write
+concurrency:
+  group: libyan-collector-state
+  cancel-in-progress: false
+jobs:
+  collector:
+    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_EBAY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check behavior
+        run: python -m unittest discover -s tests -v
+      - name: Run bot
+        env:
+          MODE: ${{ inputs.mode || 'scan' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+        run: python bot.py "$MODE"
+      - name: Save duplicate and delivery state, including after partial failure
+        if: always()
+        run: |
+          if [ ! -d .git ]; then exit 0; fi
+          git add data/state.json
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Update collector discovery state [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
