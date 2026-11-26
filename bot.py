@@ -35,7 +35,7 @@ def request_json(url, headers=None, data=None, service='API', retry=True):
     # Telegram URLs contain the bot token.
     for attempt in range(3 if retry else 1):
         try:
-            req = Request(url, headers=headers or {}, data=data)
+            req = Request(url, headers={'User-Agent': 'LibyanCollectorBot/1.0', **(headers or {})}, data=data)
             with urlopen(req, timeout=30) as response:
                 return json.load(response)
         except HTTPError as exc:
