@@ -15,6 +15,8 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent
 STATE = ROOT / 'data/state.json'
+BRIDGE = os.environ.get('COLLECTOR_URL', '').rstrip('/')
+REVISION = None
 
 
 class BotError(Exception):
@@ -76,7 +78,27 @@ def send(text):
     time.sleep(0.1)
 
 
+def bridge_request(path, payload=None):
+    # Ask GitHub for a short-lived workflow identity, never an eBay credential.
+    oidc_url = required('ACTIONS_ID_TOKEN_REQUEST_URL')
+    oidc = request_json(oidc_url + '&' + urlencode({'audience': BRIDGE + '/'}),
+                        {'Authorization': 'Bearer ' + required('ACTIONS_ID_TOKEN_REQUEST_TOKEN')},
+                        service='GitHub identity')
+    result = request_json(BRIDGE + path,
+                          {'Authorization': 'Bearer ' + oidc['value'], 'Content-Type': 'application/json'},
+                          json.dumps(payload).encode() if payload is not None else None,
+                          service='Collector bridge', retry=payload is None)
+    if result.get('error'):
+        raise BotError('Collector bridge rejected the request.')
+    return result
+
+
 def load_state():
+    global REVISION
+    if BRIDGE:
+        result = bridge_request('/collector/state')
+        REVISION = result['revision']
+        return result['state']
     if not STATE.exists():
         return {'version': 1, 'seeded': False, 'seen': {}, 'pending': {}}
     try:
@@ -89,6 +111,11 @@ def load_state():
 
 
 def save_state(state):
+    global REVISION
+    if BRIDGE:
+        result = bridge_request('/collector/state', {'state': state, 'revision': REVISION})
+        REVISION = result['revision']
+        return
     STATE.parent.mkdir(exist_ok=True)
     temp = STATE.with_suffix('.tmp')
     temp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n')
@@ -139,6 +166,7 @@ def record(item, marketplace, result):
     if not host.startswith('www.ebay.') and not host.startswith('ebay.'):
         url = ''
     return {'title': item.get('title', '')[:250], 'url': url,
+            'seller_ref': item.get('seller_ref'),
             'price': f"{price.get('value', '?')} {price.get('currency', '')}",
             'country': item.get('itemLocation', {}).get('country', '?'),
             'marketplace': marketplace, 'formats': ', '.join(item.get('buyingOptions', [])),
@@ -152,6 +180,8 @@ def message(item):
 
 
 def ebay_token():
+    if BRIDGE:
+        return 'bridge-managed'
     credentials = required('EBAY_CLIENT_ID') + ':' + required('EBAY_CLIENT_SECRET')
     response = request_json('https://api.ebay.com/identity/v1/oauth2/token',
                             {'Authorization': 'Basic ' + base64.b64encode(credentials.encode()).decode(),
@@ -168,9 +198,14 @@ def search(token, market, query, config):
         params = {'q': query, 'sort': 'newlyListed', 'limit': config['page_size'],
                   'offset': page * config['page_size'],
                   'filter': 'buyingOptions:{FIXED_PRICE|AUCTION|BEST_OFFER}'}
-        response = request_json('https://api.ebay.com/buy/browse/v1/item_summary/search?' + urlencode(params),
-                                {'Authorization': 'Bearer ' + token,
-                                 'X-EBAY-C-MARKETPLACE-ID': market}, service='eBay')
+        if BRIDGE:
+            response = bridge_request('/collector/search?' + urlencode({
+                'q': query, 'market': market, 'limit': config['page_size'],
+                'offset': page * config['page_size']}))
+        else:
+            response = request_json('https://api.ebay.com/buy/browse/v1/item_summary/search?' + urlencode(params),
+                                    {'Authorization': 'Bearer ' + token,
+                                     'X-EBAY-C-MARKETPLACE-ID': market}, service='eBay')
         yield from response.get('itemSummaries', [])
         if not response.get('next'):
             return
@@ -207,6 +242,8 @@ def scan(state, config):
             state['seen'][key] = now
             state['pending'][key] = {**item, 'discovered': now, 'instant_sent': False}
     save_state(state)
+    if BRIDGE:
+        state.update(load_state())
     delivered = 0
     for item in state['pending'].values():
         if item['score'] >= config['instant_threshold'] and not item['instant_sent']:
@@ -220,6 +257,8 @@ def scan(state, config):
 
 
 def digest(state, config, force=False):
+    if BRIDGE:
+        state.update(load_state())
     local = datetime.now(ZoneInfo(config['timezone']))
     day = local.date().isoformat()
     if not force and (local.hour < config['digest_hour'] or state.get('last_digest') == day):
@@ -258,6 +297,8 @@ def main():
         send('Libyan Collector Bot is connected to Telegram. eBay search is not enabled by this test.')
         print('Telegram test delivered.')
         return
+    if os.environ.get('GITHUB_ACTIONS') == 'true' and not BRIDGE:
+        raise BotError('COLLECTOR_URL must be configured for production scans.')
     config = json.loads((ROOT / 'config.json').read_text())
     state = load_state()
     if args.mode == 'scan':
@@ -273,3 +314,4 @@ if __name__ == '__main__':
     except BotError as exc:
         print(f'ERROR: {exc}', file=sys.stderr)
         sys.exit(1)
+

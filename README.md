@@ -1,53 +1,38 @@
 # Libyan Collector Bot
 
-Python 3.12, standard library only. Finds leads for Libyan clothing, vintage objects, watches, vinyl, books and maps. Excludes stamps and desert glass using available title/category text. Hourly scans, individual alerts for stronger matches, and a daily digest at about 8 a.m. America/Chicago. Discovery does not establish rarity, authenticity or provenance.
+Python scanner for Libyan clothing, watches, vinyl, books, maps and vintage objects across eBay US, Italy, Germany, France, UK and Spain. Telegram delivers stronger leads individually and uncertain regional clothing in a daily digest. Stamps and desert glass are excluded. Discovery does not establish authenticity or provenance.
 
-## iPhone setup: Telegram first
+## Run
 
-Use Safari; choose Request Desktop Website if a GitHub menu is hidden.
+Open Actions → Libyan Collector Bot → Run workflow, branch `main`, mode `scan`.
+The first successful scan records existing listings as a baseline and sends a Telegram confirmation. Later scans alert newly discovered matches. API failures leave the baseline unchanged.
 
-1. Make the repository private if needed: Settings → General → Danger Zone → Change repository visibility → Private. GitHub reported this repository as public during setup. Never put credentials in files.
-2. Settings → Secrets and variables → Actions → Secrets → New repository secret: add `TELEGRAM_BOT_TOKEN` with the token from BotFather.
-3. Open your bot in Telegram and send `/start`, then a fresh `hello` immediately before the next step.
-4. Actions → Libyan Collector Bot → Run workflow: choose branch `main`, mode `chat-id`, then run. Open the run → collector → Run bot to see your private chat ID. If multiple IDs appear, identify yours before continuing. This mode sends nothing and prints no tokens, names or messages. If empty, send another message and repeat. Incoming updates expire; getUpdates cannot operate if this bot has an active webhook.
-5. Add another repository secret: `TELEGRAM_CHAT_ID`, with your numeric chat ID.
-6. Run the workflow in mode `test`. Expect “Libyan Collector Bot is connected to Telegram.” This live test is still required; local unit tests do not prove delivery.
+GitHub needs only `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` repository secrets. Cloudflare stores `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` and `EBAY_VERIFICATION_TOKEN`. The workflow authenticates to Cloudflare with GitHub OIDC; no shared bridge secret or eBay credentials are copied to GitHub. Only the main-branch collector workflow in this repository is accepted.
 
-Shortcuts:
-- [Repository settings](https://github.com/ahmedamaar-lab/libyan-collector-bot/settings)
-- [Actions secrets](https://github.com/ahmedamaar-lab/libyan-collector-bot/settings/secrets/actions)
-- [Run the bot](https://github.com/ahmedamaar-lab/libyan-collector-bot/actions/workflows/collector.yml)
-- [Actions variables](https://github.com/ahmedamaar-lab/libyan-collector-bot/settings/variables/actions)
+For hourly runs, set the Actions repository variable `ENABLE_EBAY` to `true` after the first live scan succeeds. Set it to `false` to pause. Runs are hourly at minute 17; GitHub schedules may be delayed. The digest runs on the first scan at/after 8 a.m. America/Chicago. Manual mode `digest` sends pending summaries. `test` tests Telegram alone; `chat-id` finds the chat ID after sending the bot a fresh message.
 
-## Enable live eBay searches after approval
+[Run workflow](https://github.com/ahmedamaar-lab/libyan-collector-bot/actions/workflows/collector.yml) · [Actions variables](https://github.com/ahmedamaar-lab/libyan-collector-bot/settings/variables/actions)
 
-Developer-account approval and Browse API production access are distinct. Production keys alone may not permit live searches. Confirm production Browse API access. [eBay requirements](https://developer.ebay.com/api-docs/buy/buy-requirements.html).
+## Storage and deletion notices
 
-1. Add secrets `EBAY_CLIENT_ID` (production App ID) and `EBAY_CLIENT_SECRET` (production Cert ID). Do not use Sandbox keys, Dev ID or a short-lived pasted access token. The bot requests an application token per run.
-2. Run mode `scan`. The first successful scan records existing matching listings as the baseline and sends one confirmation. It does not alert those old listings. A failed search leaves the baseline unchanged.
-3. Settings → Secrets and variables → Actions → Variables: add `ENABLE_EBAY` with value `true`. Scheduled scans are gated off until this is set. Remove it or set `false` to pause.
-4. Subsequent scans send stronger leads individually and uncertain regional clothing leads in the daily digest. The digest includes individually alerted items with a label. Manual mode `digest` processes pending listings without needing eBay access.
+Production discovery and delivery state lives in Cloudflare D1, not Git commits. The Worker uses `DB` bound to `libyan-collector-data`. Schema is in `cloudflare/schema.sql`. Revision checks stop concurrent or stale writes from restoring removed data. The legacy `data/state.json` is an empty local-development fixture and is not read by production scans.
 
-## Search scope and tuning
+The root endpoint verifies eBay challenge requests and notification signatures. Verified deletion notices are queued durably, matched against hashed seller references, applied to pending listing metadata, and redacted. Notices without a usable username conservatively clear pending metadata. Listing IDs and discovery timestamps in the deduplication index contain no seller names. Already delivered Telegram messages are not removed automatically. Raw seller names, feedback and precise location are excluded from search responses; only a suppression hash and seller country are retained.
 
-`config.json` searches eBay US, Italy, Germany, France, UK and Spain. Other auction sites are not integrated. It uses alternate Libya spellings, Tripolitania/Cyrenaica names, Arabic, burnus and farmila variants. Tripoli and regional clothing can have non-Libyan origins; explicit Lebanon references are excluded, but attribution needs human review.
+Cloudflare source: `cloudflare/worker.mjs` and `cloudflare/collector.mjs`. Deploy both modules with entry point `worker.mjs`, preserving existing secrets and `DB` binding. The production endpoint is `https://libyan-collector-notifications.ahmedamaartrack.workers.dev/`. Preserve this exact URL (including trailing slash) for eBay challenge hashing. Production currently uses compatibility date `2026-10-14`.
 
-There is no explicit US-only shipping filter. Marketplace visibility can still limit domestic-only listings; this does not guarantee complete coverage. Seller country is displayed. Check shipping eligibility, cost and forwarding on each listing.
+## Search tuning
 
-- Add specific titles to `book_watchlist`; they are searched independently. No titles have been supplied yet.
-- Tune `interest_terms` and `exclude_terms`. Geography alone is not enough to alert; wording and language can cause missed matches or false positives. Modern reproductions may be flagged.
-- `max_pages` is two pages of 100 results per query/marketplace. Page-cap warnings in Actions logs mean additional listings may have been missed. Narrow overloaded queries or increase the cap within your API quota.
-- Seven queries across six marketplaces use up to 84 search calls per scan plus one OAuth call. Book titles add calls. Verify your actual API quota before increasing scope or frequency.
-- Individual alerts are capped at 15 per run, digest at 30. Excess remains queued. A failed send stays pending. A timeout after Telegram accepted a message can produce a duplicate on a later run.
+Edit `config.json` for keywords, marketplaces, exclusion terms and `book_watchlist`. Broad queries use up to two pages of 100 results; page-cap warnings indicate missed additional results. Seven queries over six marketplaces use up to 84 search calls per scan. No US-only shipping filter is applied; marketplace visibility still varies. Review shipping/forwarding and origin for each lead.
 
-## Durable duplicate tracking
+Individual alerts are capped at 15 per run; digest entries at 30. Excess remains queued. Telegram send timeouts can cause a duplicate after delivery. Failed state saves stop the run instead of overwriting concurrent changes. If repeated deletion notices interrupt a run, retry it after checking Worker logs.
 
-`data/state.json` tracks listing IDs across marketplaces and variations and is committed to `main` after each scan/digest, including partial failures. It contains listing metadata, no credentials or chat IDs. It does not rely on an expiring Actions cache. Do not reset state unless you want a new baseline.
+## Checks
 
-Actions must be allowed to write repository contents. Branch rules preventing pushes to `main` must be resolved before enabling scans. A failed “Save duplicate and delivery state” step means progress was not persisted and alerts may repeat. Workflows are serialized; avoid editing state during a run.
+`python -m unittest discover -s tests -v`
 
-The default schedule is hourly at minute 17, with alerts after each scan rather than in real time. GitHub schedules can be delayed or dropped. The daily digest runs on the first successful scan at/after 8 a.m. Chicago time. Review Actions errors and check your private repository's Actions minutes allowance; reduce frequency if needed.
+`node --test cloudflare/test.mjs cloudflare/collector.test.mjs`
 
-Local checks: `python -m unittest discover -s tests -v`. Live Telegram delivery and eBay access require your private configuration and have not been verified during development.
+These verify offline behavior. A successful live scan is still needed to confirm Browse API access, OIDC and Telegram delivery together. eBay production key activation alone does not guarantee Browse API production access.
 
-References: [marketplaces](https://developer.ebay.com/api-docs/buy/ref-marketplace-supported.html), [search filters](https://developer.ebay.com/api-docs/buy/static/ref-buy-browse-filters.html), [Telegram API](https://core.telegram.org/bots/api), [GitHub schedules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+References: [GitHub OIDC](https://docs.github.com/en/actions/reference/security/oidc), [eBay account deletion](https://developer.ebay.com/develop/guides/sell/marketplace-user-account-deletion), [Browse API requirements](https://developer.ebay.com/api-docs/buy/buy-requirements.html).
