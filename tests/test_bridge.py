@@ -4,6 +4,13 @@ from unittest.mock import patch
 import bot
 
 class BridgeTests(unittest.TestCase):
+    def test_service_identifies_itself_to_cloudflare(self):
+        import io
+        with patch.object(bot,'urlopen',return_value=io.BytesIO(b'{"ok":true}')) as opened:
+            self.assertEqual(bot.request_json('https://receiver.example',{'Authorization':'Bearer fake'}),{'ok':True})
+        request=opened.call_args.args[0]
+        self.assertEqual(request.get_header('User-agent'),'LibyanCollectorBot/1.0')
+        self.assertEqual(request.get_header('Authorization'),'Bearer fake')
     def setUp(self):
         self.bridge=patch.object(bot,'BRIDGE','https://receiver.example')
         self.bridge.start()
